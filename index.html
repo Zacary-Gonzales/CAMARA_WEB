@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capturador de Fotos por Voz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .video-container {
+            margin: 20px auto;
+            width: 100%;
+            max-width: 640px;
+        }
+        
+        #video {
+            width: 100%;
+            border: 3px solid #ddd;
+            border-radius: 5px;
+            background-color: #000;
+        }
+        
+        .canvas-container {
+            margin: 20px auto;
+            width: 100%;
+            max-width: 640px;
+            display: none;
+        }
+        
+        #canvas {
+            width: 100%;
+            border: 3px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .controls {
+            margin: 20px 0;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        #downloadBtn {
+            background-color: #2196F3;
+        }
+        
+        .status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .listening {
+            background-color: #e7f3fe;
+            color: #2196F3;
+        }
+        
+        .error {
+            background-color: #ffebee;
+            color: #f44336;
+        }
+        
+        .success {
+            background-color: #e8f5e9;
+            color: #4CAF50;
+        }
+        
+        .instructions {
+            background-color: #fff8e1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CAMARA EN LINEA</h1>
+        <p>INCLUSO FUNCIONA CON COMANDOS DE VOZ (la mayoria del tiempo)</p>
+        
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+        </div>
+        
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">Encender Camara</button>
+            <button id="captureBtn" disabled>Toma Foto</button>
+            <button id="downloadBtn" disabled>Descarga Foto</button>
+        </div>
+        
+        <div id="status" class="status instructions">
+            Permite Acceso A La Camara
+        </div>
+        
+        <div class="instructions">
+            <h3>Pasos:</h3>
+            <ol>
+                <li>Cliquea "Iniciar Cámara" para activar tu camara</li>
+                <li>Permite acceso al micrófono</li>
+                <li>Di "foto" para tomar fotos</li>
+                <li>Usa "Descargar Foto" para guardar la imagen</li>
+            </ol>
+            <p><strong>Nota:</strong> Usar en "Chronium-Based Web Navegators", osease en navegadores basados en Chrome.</p>
+        </div>
+    </div>
+
+    <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let canvasContainer = document.getElementById('canvasContainer');
+        let startBtn = document.getElementById('startBtn');
+        let captureBtn = document.getElementById('captureBtn');
+        let downloadBtn = document.getElementById('downloadBtn');
+        let status = document.getElementById('status');
+        
+       
+        let stream = null;
+        let recognition = null;
+        let isListening = false;
+        
+        startBtn.addEventListener('click', function() {
+            status.className = 'status';
+            status.textContent = 'Solicitando acceso a la cámara...';
+            
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                    .then(function(mediaStream) {
+                        stream = mediaStream;
+                        video.srcObject = stream;
+                        video.play();
+                        status.textContent = 'Cámara activada. Ahora di "foto" para capturar una imagen.';
+                        startBtn.disabled = true;
+                        captureBtn.disabled = false;
+                        startVoiceRecognition();
+                    })
+                    .catch(function(error) {
+                        status.className = 'status error';
+                        status.textContent = 'Error al acceder a la cámara: ' + error.message;
+                    });
+            } else {
+                status.className = 'status error';
+                status.textContent = 'Tu navegador no soporta la API de cámara.';
+            }
+        });
+        
+        function startVoiceRecognition() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                status.className = 'status error';
+                status.textContent = 'Tu navegador no soporta reconocimiento de voz. Usa el botón "Capturar Foto".';
+                return;
+            }
+            
+            let SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'es-ES';
+            
+            recognition.onresult = function(event) {
+                let transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+                
+                if (transcript === 'foto') {
+                    capturePhoto();
+                }
+            };
+            
+            recognition.onerror = function(event) {
+                console.error('Error en reconocimiento de voz:', event.error);
+                status.className = 'status error';
+                status.textContent = 'Error en el reconocimiento de voz: ' + event.error;
+            };
+            
+            recognition.onend = function() {
+                if (isListening) {
+                    recognition.start();
+                }
+            };
+            
+            recognition.start();
+            isListening = true;
+            status.className = 'status listening';
+            status.textContent = 'Escuchando... Di "foto" para capturar una imagen.';
+        };
+        
+        function capturePhoto() {
+            if (!stream) {
+                status.className = 'status error';
+                status.textContent = 'Primero debes iniciar la cámara.';
+                return;
+            }
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            let context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            canvasContainer.style.display = 'block';
+            
+            downloadBtn.disabled = false;
+            
+            status.className = 'status success';
+            status.textContent = '¡Foto capturada! Puedes descargarla ahora.';
+        };
+        
+        captureBtn.addEventListener('click', capturePhoto);
+        
+        downloadBtn.addEventListener('click', function() {
+            if (!canvas.width) {
+                status.className = 'status error';
+                status.textContent = 'No hay ninguna foto para descargar.';
+                return;
+            }
+            
+            var link = document.createElement('a');
+            link.download = 'foto-capturada.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            status.textContent = 'Foto descargada correctamente.';
+        });
+    </script>
+</body>
+</html>
